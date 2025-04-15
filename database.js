@@ -13,9 +13,7 @@ const db = new sqlite3.Database('./users.db', (err) => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         email TEXT UNIQUE NOT NULL,
-        passwordHash TEXT NOT NULL,
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-        lastLogin DATETIME
+        passwordHash TEXT NOT NULL
       )
     `);
     
@@ -37,7 +35,6 @@ const db = new sqlite3.Database('./users.db', (err) => {
         userId INTEGER NOT NULL,
         deviceIdentifier TEXT NOT NULL,
         isVerified BOOLEAN DEFAULT 0,
-        lastLogin DATETIME,
         FOREIGN KEY (userId) REFERENCES users(id)
       )
     `);
@@ -49,7 +46,6 @@ const db = new sqlite3.Database('./users.db', (err) => {
         userId INTEGER NOT NULL,
         levelsUnlocked TEXT NOT NULL,
         bestScores TEXT NOT NULL,
-        lastSynced DATETIME,
         FOREIGN KEY (userId) REFERENCES users(id)
       )
     `);
