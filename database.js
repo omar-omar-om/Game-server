@@ -38,12 +38,11 @@ const db = new sqlite3.Database('./users.db', (err) => {
       )
     `);
     
-    // Game progress - levels unlocked and best scores
+    // Game progress - best scores only
     db.run(`
       CREATE TABLE IF NOT EXISTS game_progress (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userId INTEGER NOT NULL,
-        levelsUnlocked TEXT NOT NULL,
         bestScores TEXT NOT NULL,
         FOREIGN KEY (userId) REFERENCES users(id)
       )
