@@ -128,36 +128,96 @@ app.post('/api/verify-device', (req, res) => {
   const { userId, deviceIdentifier, securityAnswer } = req.body;
   
   if (!userId || !deviceIdentifier || !securityAnswer) {
-    return res.status(400).json({ error: 'All fields are required' });
+    return res.status(400).json({ error: 'All fields are required', success: false });
   }
   
   const answerHash = hashString(securityAnswer);
   
-  // Get user's security question answer
-  db.get('SELECT answerHash FROM security_questions WHERE userId = ?', 
-    [userId], 
-    (err, question) => {
-      if (err || !question) {
-        return res.status(404).json({ error: 'Security question not found' });
-      }
-      
-      if (question.answerHash !== answerHash) {
-        return res.status(401).json({ error: 'Incorrect security answer' });
-      }
-      
-      // Answer is correct, verify the device
-      db.run('UPDATE devices SET isVerified = 1 WHERE userId = ? AND deviceIdentifier = ?',
-        [userId, deviceIdentifier],
-        (err) => {
-          if (err) {
-            return res.status(500).json({ error: 'Failed to verify device' });
-          }
-          
-          res.json({ message: 'Device verified successfully' });
-        }
-      );
+  // Handle email as userId
+  const isEmail = userId.includes('@');
+  
+  // Query to get the user ID
+  const userQuery = isEmail 
+    ? 'SELECT id FROM users WHERE email = ?' 
+    : 'SELECT id FROM users WHERE id = ?';
+  
+  // First get user ID from database
+  db.get(userQuery, [userId], (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error', success: false });
     }
-  );
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found', success: false });
+    }
+    
+    const numericUserId = user.id;
+    
+    // Get user's security question answer
+    db.get('SELECT answerHash FROM security_questions WHERE userId = ?', 
+      [numericUserId], 
+      (err, question) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error', success: false });
+        }
+        
+        if (!question) {
+          // DEBUG: Let's check all security questions in the database
+          db.all('SELECT userId, question, answerHash FROM security_questions', [], (err, allQuestions) => {
+            // Silently continue
+          });
+          
+          return res.status(404).json({ error: 'Security question not found', success: false });
+        }
+        
+        if (question.answerHash !== answerHash) {
+          return res.status(401).json({ 
+            error: 'Incorrect security answer',
+            success: false
+          });
+        }
+        
+        // Answer is correct, verify the device
+        db.run('UPDATE devices SET isVerified = 1 WHERE userId = ? AND deviceIdentifier = ?',
+          [numericUserId, deviceIdentifier],
+          function(err) {
+            if (err) {
+              return res.status(500).json({ 
+                error: 'Failed to verify device',
+                success: false
+              });
+            }
+            
+            // Check if any rows were affected
+            if (this.changes === 0) {
+              // Insert the device if it doesn't exist
+              db.run('INSERT INTO devices (userId, deviceIdentifier, isVerified) VALUES (?, ?, 1)',
+                [numericUserId, deviceIdentifier],
+                (err) => {
+                  if (err) {
+                    return res.status(500).json({ 
+                      error: 'Failed to add device',
+                      success: false
+                    });
+                  }
+                  
+                  res.json({ 
+                    message: 'Device added and verified successfully',
+                    success: true 
+                  });
+                }
+              );
+            } else {
+              res.json({ 
+                message: 'Device verified successfully',
+                success: true 
+              });
+            }
+          }
+        );
+      }
+    );
+  });
 });
 
 // Get security question for a user
