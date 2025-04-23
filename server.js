@@ -125,16 +125,16 @@ app.post('/api/login', (req, res) => {
 
 // Verify security question for new device
 app.post('/api/verify-device', (req, res) => {
-  const { userId, deviceIdentifier, securityAnswer } = req.body;
+  const { userEmail, deviceIdentifier, securityAnswer } = req.body;
   
-  if (!userId || !deviceIdentifier || !securityAnswer) {
+  if (!userEmail || !deviceIdentifier || !securityAnswer) {
     return res.status(400).json({ error: 'All fields are required', success: false });
   }
   
   const answerHash = hashString(securityAnswer);
   
-  // Always treat userId as email address
-  db.get('SELECT id FROM users WHERE email = ?', [userId], (err, user) => {
+  // Always treat userEmail as email address
+  db.get('SELECT id FROM users WHERE email = ?', [userEmail], (err, user) => {
     if (err) {
       console.error("Database error finding user:", err);
       return res.status(500).json({ error: 'Database error', success: false });
