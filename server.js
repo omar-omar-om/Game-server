@@ -61,80 +61,119 @@ app.post('/api/register', (req, res) => {
 app.post('/api/login', (req, res) => {
   const { email, password, deviceIdentifier } = req.body;
   
-  if (!email || !password || !deviceIdentifier) {
-    return res.status(400).json({ error: 'Email, password and device identifier required' });
+  // Check required fields deviceIdentifier is always required
+  if (!email || !deviceIdentifier) {
+    return res.status(400).json({ error: 'Email and device identifier required' });
   }
   
-  const passwordHash = hashString(password);
+  // Check if this is an auto login attempt (empty password)
+  const isAutoLogin = !password || password.trim() === '';
   
-  // Check user credentials
-  db.get('SELECT id FROM users WHERE email = ? AND passwordHash = ?', 
-    [email, passwordHash], 
-    (err, user) => {
-      if (err || !user) {
-        return res.status(401).json({ error: 'Invalid email or password' });
-      }
-      
-      // Check if device is verified
-      db.get('SELECT isVerified FROM devices WHERE userId = ? AND deviceIdentifier = ?',
-        [user.id, deviceIdentifier],
-        (err, device) => {
-          if (err) {
-            return res.status(500).json({ error: 'Database error' });
-          }
-          
-          if (device) {
-            // Device exists
-            if (device.isVerified) {
-              // Device is verified, login successful
+  // For auto-login, we only need to check device verification
+  if (isAutoLogin) {
+    // Get user by email only
+    db.get('SELECT id FROM users WHERE email = ?', 
+      [email], 
+      (err, user) => {
+        if (err || !user) {
+          return res.status(401).json({ error: 'Invalid email' });
+        }
+        
+        // Check if device is verified
+        db.get('SELECT isVerified FROM devices WHERE userId = ? AND deviceIdentifier = ?',
+          [user.id, deviceIdentifier],
+          (err, device) => {
+            if (err) {
+              return res.status(500).json({ error: 'Database error' });
+            }
+            
+            if (device && device.isVerified) {
+              // Device is verified, auto-login successful
               return res.json({ 
-                message: 'Login successful', 
-                userId: user.id,
+                message: 'Auto-login successful', 
                 requiresVerification: false
               });
             } else {
-              // Device exists but not verified
-              return res.json({
-                message: 'Device requires verification',
-                userId: user.id,
+              // Device not verified or doesn't exist
+              return res.status(401).json({ 
+                error: 'Device not verified for auto-login',
                 requiresVerification: true
               });
             }
-          } else {
-            // New device, add to database as unverified
-            db.run('INSERT INTO devices (userId, deviceIdentifier, isVerified) VALUES (?, ?, 0)',
-              [user.id, deviceIdentifier],
-              (err) => {
-                if (err) {
-                  return res.status(500).json({ error: 'Failed to register device' });
-                }
-                
+          }
+        );
+      }
+    );
+  } else {
+    // Normal login with password
+    const passwordHash = hashString(password);
+    
+    // Check user credentials
+    db.get('SELECT id FROM users WHERE email = ? AND passwordHash = ?', 
+      [email, passwordHash], 
+      (err, user) => {
+        if (err || !user) {
+          return res.status(401).json({ error: 'Invalid email or password' });
+        }
+        
+        // Check if device is verified
+        db.get('SELECT isVerified FROM devices WHERE userId = ? AND deviceIdentifier = ?',
+          [user.id, deviceIdentifier],
+          (err, device) => {
+            if (err) {
+              return res.status(500).json({ error: 'Database error' });
+            }
+            
+            if (device) {
+              // Device exists
+              if (device.isVerified) {
+                // Device is verified, login successful
                 return res.json({ 
-                  message: 'New device requires verification', 
-                  userId: user.id,
+                  message: 'Login successful', 
+                  requiresVerification: false
+                });
+              } else {
+                // Device exists but not verified
+                return res.json({
+                  message: 'Device requires verification',
                   requiresVerification: true
                 });
               }
-            );
+            } else {
+              // New device add to database as unverified
+              db.run('INSERT INTO devices (userId, deviceIdentifier, isVerified) VALUES (?, ?, 0)',
+                [user.id, deviceIdentifier],
+                (err) => {
+                  if (err) {
+                    return res.status(500).json({ error: 'Failed to register device' });
+                  }
+                  
+                  return res.json({ 
+                    message: 'New device requires verification', 
+                    requiresVerification: true
+                  });
+                }
+              );
+            }
           }
-        }
-      );
-    }
-  );
+        );
+      }
+    );
+  }
 });
 
 // Verify security question for new device
 app.post('/api/verify-device', (req, res) => {
-  const { userEmail, deviceIdentifier, securityAnswer } = req.body;
+  const { userId, deviceIdentifier, securityAnswer } = req.body;
   
-  if (!userEmail || !deviceIdentifier || !securityAnswer) {
+  if (!userId || !deviceIdentifier || !securityAnswer) {
     return res.status(400).json({ error: 'All fields are required', success: false });
   }
   
   const answerHash = hashString(securityAnswer);
   
-  // Always treat userEmail as email address
-  db.get('SELECT id FROM users WHERE email = ?', [userEmail], (err, user) => {
+  // Always treat userId as email address
+  db.get('SELECT id FROM users WHERE email = ?', [userId], (err, user) => {
     if (err) {
       console.error("Database error finding user:", err);
       return res.status(500).json({ error: 'Database error', success: false });
@@ -151,7 +190,6 @@ app.post('/api/verify-device', (req, res) => {
       [numericUserId], 
       (err, question) => {
         if (err) {
-          console.error("Database error finding security question:", err);
           return res.status(500).json({ error: 'Database error', success: false });
         }
         
