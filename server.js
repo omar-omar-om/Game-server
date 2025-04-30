@@ -164,16 +164,16 @@ app.post('/api/login', (req, res) => {
 
 // Verify security question for new device
 app.post('/api/verify-device', (req, res) => {
-  const { userId, deviceIdentifier, securityAnswer } = req.body;
+  const { userEmail, deviceIdentifier, securityAnswer } = req.body;
   
-  if (!userId || !deviceIdentifier || !securityAnswer) {
+  if (!userEmail || !deviceIdentifier || !securityAnswer) {
     return res.status(400).json({ error: 'All fields are required', success: false });
   }
   
   const answerHash = hashString(securityAnswer);
   
-  // Always treat userId as email address
-  db.get('SELECT id FROM users WHERE email = ?', [userId], (err, user) => {
+  
+  db.get('SELECT id FROM users WHERE email = ?', [userEmail], (err, user) => {
     if (err) {
       console.error("Database error finding user:", err);
       return res.status(500).json({ error: 'Database error', success: false });
@@ -275,8 +275,8 @@ app.get('/api/security-question/:email', (req, res) => {
 // --- Game Progress Routes ----
 
 // Get user's game progress
-app.get('/api/progress/:userId', (req, res) => {
-  const email = req.params.userId; // This is always an email
+app.get('/api/progress/:userEmail', (req, res) => {
+  const email = req.params.userEmail;
   
   // First get the numeric user ID
   db.get('SELECT id FROM users WHERE email = ?', [email], (err, user) => {
@@ -309,14 +309,14 @@ app.get('/api/progress/:userId', (req, res) => {
 
 // Update game progress
 app.post('/api/progress', (req, res) => {
-  const { userId, bestScores } = req.body;
+  const { userEmail, bestScores } = req.body;
   
-  if (!userId || !bestScores) {
+  if (!userEmail || !bestScores) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   
   // First get the numeric user ID from the email
-  db.get('SELECT id FROM users WHERE email = ?', [userId], (err, user) => {
+  db.get('SELECT id FROM users WHERE email = ?', [userEmail], (err, user) => {
     if (err || !user) {
       return res.status(404).json({ error: 'User not found' });
     }
