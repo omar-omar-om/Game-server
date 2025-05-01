@@ -311,82 +311,53 @@ app.get('/api/progress/:userEmail', (req, res) => {
 app.post('/api/progress', (req, res) => {
   const { userEmail, bestScores } = req.body;
   
-  // Check if required fields are present
   if (!userEmail || !bestScores) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   
-  // Parse the incoming scores
-  let newScores;
-  if (typeof bestScores === 'string') {
-    try {
-      newScores = JSON.parse(bestScores);
-    } catch (error) {
-      return res.status(400).json({ error: 'Invalid bestScores format' });
-    }
-  } else {
-    newScores = bestScores;
-  }
-  
-  // Get the user ID from email
+  // First get the numeric user ID from the email
   db.get('SELECT id FROM users WHERE email = ?', [userEmail], (err, user) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    
-    if (!user) {
+    if (err || !user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
     const numericUserId = user.id;
     
-    // Get existing progress
-    db.get('SELECT bestScores FROM game_progress WHERE userId = ?', [numericUserId], (err, progress) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      // Get current scores
-      let currentScores = {};
-      if (progress && progress.bestScores) {
-        try {
-          currentScores = JSON.parse(progress.bestScores);
-        } catch (error) {
-          currentScores = {};
-        }
-      }
-      
-      // Merge scores for each level
-      const finalScores = {};
-      const levels = ['Level1', 'Level2'];
-      
-      for (let i = 0; i < levels.length; i++) {
-        const level = levels[i];
-        const currentScore = currentScores[level] || 0;
-        const newScore = (newScores.bestScores && newScores.bestScores[level]) || 0;
-        finalScores[level] = Math.max(currentScore, newScore);
-      }
-      
-      // Prepare the query based on whether progress exists
-      let query;
-      let params;
-      
-      if (progress) {
-        query = 'UPDATE game_progress SET bestScores = ? WHERE userId = ?';
-        params = [JSON.stringify(finalScores), numericUserId];
-      } else {
-        query = 'INSERT INTO game_progress (bestScores, userId) VALUES (?, ?)';
-        params = [JSON.stringify(finalScores), numericUserId];
-      }
-      
-      // Save to database
-      db.run(query, params, (err) => {
+    // Check if progress exists
+    db.get('SELECT id FROM game_progress WHERE userId = ?', 
+      [numericUserId], 
+      (err, progress) => {
         if (err) {
-          return res.status(500).json({ error: 'Failed to save progress' });
+          return res.status(500).json({ error: 'Database error' });
         }
-        res.json({ message: 'Progress updated successfully' });
-      });
-    });
+        
+        if (progress) {
+          // Update existing progress
+          db.run('UPDATE game_progress SET bestScores = ? WHERE userId = ?',
+            [bestScores, numericUserId],
+            (err) => {
+              if (err) {
+                return res.status(500).json({ error: 'Failed to update progress' });
+              }
+              
+              res.json({ message: 'Progress updated successfully' });
+            }
+          );
+        } else {
+          // Create new progress
+          db.run('INSERT INTO game_progress (userId, bestScores) VALUES (?, ?)',
+            [numericUserId, bestScores],
+            (err) => {
+              if (err) {
+                return res.status(500).json({ error: 'Failed to save progress' });
+              }
+              
+              res.json({ message: 'Progress saved successfully' });
+            }
+          );
+        }
+      }
+    );
   });
 });
 
